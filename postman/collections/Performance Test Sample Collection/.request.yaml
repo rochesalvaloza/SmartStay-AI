@@ -1,0 +1,22 @@
+$kind: http-request
+name: ""
+url: http://127.0.0.1:8000/api/bookings
+method: POST
+body:
+  type: json
+  content: "{\r
+
+    \  \"room_id\": 1,\r
+
+    \  \"guest_name\": \"Juan Dela Cruz\",\r
+
+    \  \"guest_email\": \"juan@example.com\",\r
+
+    \  \"check_in\": \"2026-11-10\",\r
+
+    \  \"check_out\": \"2026-11-13\",\r
+
+    \  \"guests\": 2\r
+
+    }"
+order: 1000
