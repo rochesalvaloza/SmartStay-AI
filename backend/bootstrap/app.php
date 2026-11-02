@@ -12,10 +12,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-    $middleware->alias([
-        'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
-    ]);
-})
+        $middleware->alias([
+            'admin' => \App\Http\Middleware\EnsureUserIsAdmin::class,
+        ]);
+
+        // Do not redirect unauthenticated requests to a missing login route.
+        $middleware->redirectGuestsTo(fn () => null);
+    })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
-    })->create();
+        $exceptions->shouldRenderJsonWhen(
+            fn ($request, $exception) =>
+                $request->is('api/*') || $request->expectsJson()
+        );
+    })
+    ->create();

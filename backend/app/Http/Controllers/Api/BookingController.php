@@ -9,7 +9,9 @@ use DateTimeImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class BookingController extends Controller
 {
@@ -31,7 +33,7 @@ class BookingController extends Controller
     }
 
     /**
-     * Create a booking for the authenticated customer.
+     * Create a booking with manual payment submission.
      */
     public function store(Request $request): JsonResponse
     {
@@ -43,19 +45,44 @@ class BookingController extends Controller
 
         $validated = $request->validate([
             'room_id' => ['required', 'integer', 'exists:rooms,id'],
+
             'check_in' => [
                 'required',
                 'date_format:Y-m-d',
                 'after_or_equal:today',
             ],
+
             'check_in_time' => ['required', 'date_format:H:i'],
+
             'check_out' => [
                 'required',
                 'date_format:Y-m-d',
                 'after:check_in',
             ],
+
             'check_out_time' => ['required', 'date_format:H:i'],
+
             'guests' => ['required', 'integer', 'min:1', 'max:20'],
+
+            'payment_method' => [
+                'required',
+                'in:gcash,maya,cash_at_hotel',
+            ],
+
+            'payment_reference' => [
+                'nullable',
+                'required_if:payment_method,gcash,maya',
+                'string',
+                'max:100',
+            ],
+
+            'payment_proof' => [
+                'nullable',
+                'required_if:payment_method,gcash,maya',
+                'file',
+                'mimes:jpg,jpeg,png,pdf',
+                'max:5120',
+            ],
         ]);
 
         $requestedCheckIn = new DateTimeImmutable(
@@ -85,88 +112,140 @@ class BookingController extends Controller
             ]);
         }
 
-        $booking = DB::transaction(function () use (
-            $validated,
-            $customer,
-            $requestedCheckIn,
-            $requestedCheckOut,
-            $nights
+        /*
+         * Payment status is assigned by the server.
+         * Customers cannot submit their own payment status.
+         */
+        $paymentMethod = $validated['payment_method'];
+
+        $paymentStatus = $paymentMethod === 'cash_at_hotel'
+            ? 'unpaid'
+            : 'pending';
+
+        $proofPath = null;
+
+        /*
+         * Store receipts privately.
+         * Do not use the public storage disk for payment receipts.
+         */
+        if (
+            in_array($paymentMethod, ['gcash', 'maya'], true)
+            && $request->hasFile('payment_proof')
         ) {
-            $requestedRoom = Room::query()
-                ->whereKey($validated['room_id'])
-                ->lockForUpdate()
-                ->firstOrFail();
+            $proofPath = $request->file('payment_proof')
+    ->store('payment-proofs', 'local');
+        }
 
-            if (!$requestedRoom->is_available) {
-                throw ValidationException::withMessages([
-                    'room_id' => ['This room is currently unavailable.'],
+        try {
+            $booking = DB::transaction(function () use (
+                $validated,
+                $customer,
+                $requestedCheckIn,
+                $requestedCheckOut,
+                $nights,
+                $paymentMethod,
+                $paymentStatus,
+                $proofPath
+            ) {
+                $requestedRoom = Room::query()
+                    ->whereKey($validated['room_id'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (!$requestedRoom->is_available) {
+                    throw ValidationException::withMessages([
+                        'room_id' => ['This room is currently unavailable.'],
+                    ]);
+                }
+
+                if ($requestedRoom->capacity < (int) $validated['guests']) {
+                    throw ValidationException::withMessages([
+                        'guests' => [
+                            'This room cannot accommodate the requested number of guests.',
+                        ],
+                    ]);
+                }
+
+                $hasConflict = Booking::query()
+                    ->where('room_id', $requestedRoom->id)
+                    ->where(function ($query) {
+                        $query->whereNull('status')
+                            ->orWhere('status', '!=', 'cancelled');
+                    })
+                    ->whereRaw(
+                        "TIMESTAMP(
+                            check_in,
+                            COALESCE(check_in_time, '00:00:00')
+                        ) < ?",
+                        [$requestedCheckOut->format('Y-m-d H:i:s')]
+                    )
+                    ->whereRaw(
+                        "TIMESTAMP(
+                            check_out,
+                            COALESCE(check_out_time, '23:59:59')
+                        ) > ?",
+                        [$requestedCheckIn->format('Y-m-d H:i:s')]
+                    )
+                    ->exists();
+
+                if ($hasConflict) {
+                    throw ValidationException::withMessages([
+                        'room_id' => [
+                            'Sorry, this room has just been booked for your selected dates and times. Please choose another room.',
+                        ],
+                    ]);
+                }
+
+                $totalPrice = round(
+                    $nights * (float) $requestedRoom->price_per_night,
+                    2
+                );
+
+                return Booking::create([
+                    'user_id' => $customer->id,
+                    'room_id' => $requestedRoom->id,
+                    'room_number' => $requestedRoom->room_number,
+                    'guest_name' => $customer->name,
+                    'guest_email' => $customer->email,
+
+                    'check_in' => $validated['check_in'],
+                    'check_in_time' => $validated['check_in_time'],
+                    'check_out' => $validated['check_out'],
+                    'check_out_time' => $validated['check_out_time'],
+
+                    'guests' => (int) $validated['guests'],
+                    'total_price' => $totalPrice,
+
+                    // Reservation status remains separate from payment status.
+                    'status' => 'confirmed',
+
+                    // Payment information
+                    'payment_method' => $paymentMethod,
+                    'payment_status' => $paymentStatus,
+                    'payment_reference' => $paymentMethod === 'cash_at_hotel'
+                        ? null
+                        : $validated['payment_reference'],
+                    'payment_proof_path' => $proofPath,
+                    'payment_verified_at' => null,
+                    'payment_rejection_reason' => null,
                 ]);
+            }, 3);
+        } catch (Throwable $exception) {
+            // Remove the uploaded receipt if booking creation fails.
+            if ($proofPath) {
+               Storage::disk('local')->delete($proofPath);
             }
 
-            if ($requestedRoom->capacity < (int) $validated['guests']) {
-                throw ValidationException::withMessages([
-                    'guests' => [
-                        'This room cannot accommodate the requested number of guests.',
-                    ],
-                ]);
-            }
-
-            $hasConflict = Booking::query()
-                ->where('room_id', $requestedRoom->id)
-                ->where(function ($query) {
-                    $query->whereNull('status')
-                        ->orWhere('status', '!=', 'cancelled');
-                })
-                ->whereRaw(
-                    "TIMESTAMP(
-                        check_in,
-                        COALESCE(check_in_time, '00:00:00')
-                    ) < ?",
-                    [$requestedCheckOut->format('Y-m-d H:i:s')]
-                )
-                ->whereRaw(
-                    "TIMESTAMP(
-                        check_out,
-                        COALESCE(check_out_time, '23:59:59')
-                    ) > ?",
-                    [$requestedCheckIn->format('Y-m-d H:i:s')]
-                )
-                ->exists();
-
-            if ($hasConflict) {
-                throw ValidationException::withMessages([
-                    'room_id' => [
-                        'Sorry, this room has just been booked for your selected dates and times. Please choose another room.',
-                    ],
-                ]);
-            }
-
-            $totalPrice = round(
-                $nights * (float) $requestedRoom->price_per_night,
-                2
-            );
-
-            return Booking::create([
-                'user_id' => $customer->id,
-                'room_id' => $requestedRoom->id,
-                'room_number' => $requestedRoom->room_number,
-                'guest_name' => $customer->name,
-                'guest_email' => $customer->email,
-                'check_in' => $validated['check_in'],
-                'check_in_time' => $validated['check_in_time'],
-                'check_out' => $validated['check_out'],
-                'check_out_time' => $validated['check_out_time'],
-                'guests' => (int) $validated['guests'],
-                'total_price' => $totalPrice,
-                'status' => 'confirmed',
-            ]);
-        }, 3);
+            throw $exception;
+        }
 
         $booking->load('room');
 
         return response()->json([
             'success' => true,
-            'message' => 'Your booking has been confirmed!',
+            'message' => $paymentStatus === 'pending'
+                ? 'Your booking was submitted successfully. Your payment is waiting for admin verification.'
+                : 'Your booking was submitted successfully. Please pay at the hotel.',
             'data' => $booking,
         ], 201);
     }

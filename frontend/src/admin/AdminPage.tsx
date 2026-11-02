@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import './AdminPage.css';
 
@@ -37,6 +36,22 @@ type Booking = {
   total_price: string | number;
   status: string;
   room: Room | null;
+};
+
+type PaymentBooking = Booking & {
+  payment_method: 'gcash' | 'maya' | 'cash_at_hotel' | null;
+  payment_status: 'unrecorded' | 'unpaid' | 'pending' | 'paid' | 'rejected';
+  payment_reference: string | null;
+  payment_proof_path: string | null;
+  payment_verified_at: string | null;
+  payment_rejection_reason: string | null;
+};
+
+type PaginatedPayments = {
+  current_page: number;
+  last_page: number;
+  data: PaymentBooking[];
+  total: number;
 };
 
 type PaginatedBookings = {
@@ -107,6 +122,13 @@ function formatMessageTime(value: string): string {
   });
 }
 
+function paymentMethodLabel(method: PaymentBooking['payment_method']): string {
+  if (method === 'gcash') return 'GCash';
+  if (method === 'maya') return 'Maya';
+  if (method === 'cash_at_hotel') return 'Cash at Hotel';
+  return 'Not recorded';
+}
+
 export default function AdminPage() {
   const [token, setToken] = useState(
     () => localStorage.getItem('smartstay_admin_token') ?? '',
@@ -124,10 +146,11 @@ export default function AdminPage() {
   const [error, setError] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Customer messages state
-  const [activeSection, setActiveSection] = useState<'dashboard' | 'messages'>(
-    'dashboard',
-  );
+  const [activeSection, setActiveSection] = useState<
+    'dashboard' | 'messages' | 'payments'
+  >('dashboard');
+
+  // Customer messages
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] =
     useState<Conversation | null>(null);
@@ -136,6 +159,19 @@ export default function AdminPage() {
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [messagesError, setMessagesError] = useState('');
   const [replyLoading, setReplyLoading] = useState(false);
+
+  // Payment verification
+  const [payments, setPayments] = useState<PaginatedPayments | null>(null);
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentStatus, setPaymentStatus] = useState('');
+  const [paymentPage, setPaymentPage] = useState(1);
+  const [paymentsLoading, setPaymentsLoading] = useState(false);
+  const [paymentsError, setPaymentsError] = useState('');
+  const [paymentActionId, setPaymentActionId] = useState<number | null>(null);
+  const [rejectingPayment, setRejectingPayment] =
+    useState<PaymentBooking | null>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [receiptLoadingId, setReceiptLoadingId] = useState<number | null>(null);
 
   const logout = useCallback(() => {
     const currentToken = localStorage.getItem('smartstay_admin_token');
@@ -152,6 +188,7 @@ export default function AdminPage() {
 
     localStorage.removeItem('smartstay_admin_token');
     localStorage.removeItem('smartstay_admin');
+
     setToken('');
     setUser(null);
     setStats(null);
@@ -159,9 +196,12 @@ export default function AdminPage() {
     setConversations([]);
     setSelectedConversation(null);
     setConversationMessages([]);
+    setPayments(null);
+    setRejectingPayment(null);
     setPassword('');
     setError('');
     setMessagesError('');
+    setPaymentsError('');
   }, []);
 
   // Load dashboard and reservations
@@ -188,23 +228,16 @@ export default function AdminPage() {
         ]);
 
       if (
-        dashboardResponse.status === 401 ||
-        dashboardResponse.status === 403 ||
-        bookingsResponse.status === 401 ||
-        bookingsResponse.status === 403 ||
-        userResponse.status === 401 ||
-        userResponse.status === 403
+        [dashboardResponse, bookingsResponse, userResponse].some(
+          (response) => response.status === 401 || response.status === 403,
+        )
       ) {
         logout();
         setLoginError('Your session expired. Please log in again.');
         return;
       }
 
-      if (
-        !dashboardResponse.ok ||
-        !bookingsResponse.ok ||
-        !userResponse.ok
-      ) {
+      if (!dashboardResponse.ok || !bookingsResponse.ok || !userResponse.ok) {
         throw new Error('Could not load dashboard information.');
       }
 
@@ -233,7 +266,7 @@ export default function AdminPage() {
     }
   }, [token, page, search, status, logout]);
 
-  // Load all customer conversations
+  // Load customer conversations
   const loadConversations = useCallback(async () => {
     if (!token) return;
 
@@ -275,7 +308,7 @@ export default function AdminPage() {
     }
   }, [token, logout]);
 
-  // Load one conversation and its messages
+  // Open one conversation
   const openConversation = useCallback(
     async (conversation: Conversation) => {
       if (!token) return;
@@ -335,7 +368,7 @@ export default function AdminPage() {
     [token, logout],
   );
 
-  // Send an admin reply
+  // Send admin reply
   async function handleReply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -354,9 +387,7 @@ export default function AdminPage() {
             'Content-Type': 'application/json',
             Accept: 'application/json',
           },
-          body: JSON.stringify({
-            message: replyMessage.trim(),
-          }),
+          body: JSON.stringify({ message: replyMessage.trim() }),
         },
       );
 
@@ -419,6 +450,12 @@ export default function AdminPage() {
 
       const result = await response.json();
 
+      if (response.status === 401 || response.status === 403) {
+        logout();
+        setLoginError('Your session expired. Please log in again.');
+        return;
+      }
+
       if (!response.ok) {
         throw new Error(result.message || 'Could not update conversation.');
       }
@@ -443,6 +480,248 @@ export default function AdminPage() {
     }
   }
 
+  // Load payment records
+  const loadPayments = useCallback(async () => {
+    if (!token) return;
+
+    setPaymentsLoading(true);
+    setPaymentsError('');
+
+    try {
+      const params = new URLSearchParams({
+        page: String(paymentPage),
+      });
+
+      if (paymentSearch.trim()) {
+        params.set('search', paymentSearch.trim());
+      }
+
+      if (paymentStatus) {
+        params.set('status', paymentStatus);
+      }
+
+      const response = await fetch(
+        `${API_URL}/admin/payments?${params.toString()}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        },
+      );
+
+      if (response.status === 401 || response.status === 403) {
+        logout();
+        setLoginError('Your session expired. Please log in again.');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Could not load payment records.');
+      }
+
+      const result = (await response.json()) as ApiResponse<PaginatedPayments>;
+      setPayments(result.data);
+    } catch (err) {
+      setPaymentsError(
+        err instanceof Error ? err.message : 'Unable to load payments.',
+      );
+    } finally {
+      setPaymentsLoading(false);
+    }
+  }, [token, paymentPage, paymentSearch, paymentStatus, logout]);
+
+  // Approve a pending GCash or Maya payment
+  async function approvePayment(booking: PaymentBooking) {
+    if (!token) return;
+
+    const confirmed = window.confirm(
+      `Approve the ${paymentMethodLabel(booking.payment_method)} payment for booking #${booking.id}?`,
+    );
+
+    if (!confirmed) return;
+
+    setPaymentActionId(booking.id);
+    setPaymentsError('');
+
+    try {
+      const response = await fetch(
+        `${API_URL}/admin/payments/${booking.id}/approve`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        },
+      );
+
+      const result = await response.json();
+
+      if (response.status === 401 || response.status === 403) {
+        logout();
+        setLoginError('Your session expired. Please log in again.');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Could not approve this payment.');
+      }
+
+      await loadPayments();
+    } catch (err) {
+      setPaymentsError(
+        err instanceof Error ? err.message : 'Unable to approve payment.',
+      );
+    } finally {
+      setPaymentActionId(null);
+    }
+  }
+
+  // Reject a pending GCash or Maya payment
+  async function rejectPayment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!token || !rejectingPayment || !rejectionReason.trim()) return;
+
+    const booking = rejectingPayment;
+    setPaymentActionId(booking.id);
+    setPaymentsError('');
+
+    try {
+      const response = await fetch(
+        `${API_URL}/admin/payments/${booking.id}/reject`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({ reason: rejectionReason.trim() }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (response.status === 401 || response.status === 403) {
+        logout();
+        setLoginError('Your session expired. Please log in again.');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Could not reject this payment.');
+      }
+
+      setRejectingPayment(null);
+      setRejectionReason('');
+      await loadPayments();
+    } catch (err) {
+      setPaymentsError(
+        err instanceof Error ? err.message : 'Unable to reject payment.',
+      );
+    } finally {
+      setPaymentActionId(null);
+    }
+  }
+
+  // Record cash collected at the hotel
+  async function collectCash(booking: PaymentBooking) {
+    if (!token) return;
+
+    const confirmed = window.confirm(
+      `Confirm that ₱${Number(booking.total_price).toLocaleString('en-PH')} has been collected for booking #${booking.id}?`,
+    );
+
+    if (!confirmed) return;
+
+    setPaymentActionId(booking.id);
+    setPaymentsError('');
+
+    try {
+      const response = await fetch(
+        `${API_URL}/admin/payments/${booking.id}/collect-cash`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/json',
+          },
+        },
+      );
+
+      const result = await response.json();
+
+      if (response.status === 401 || response.status === 403) {
+        logout();
+        setLoginError('Your session expired. Please log in again.');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Could not record cash collection.');
+      }
+
+      await loadPayments();
+    } catch (err) {
+      setPaymentsError(
+        err instanceof Error ? err.message : 'Unable to record cash collection.',
+      );
+    } finally {
+      setPaymentActionId(null);
+    }
+  }
+
+  // Open private receipt using the authenticated admin request
+  async function viewReceipt(booking: PaymentBooking) {
+    if (!token) return;
+
+    setReceiptLoadingId(booking.id);
+    setPaymentsError('');
+
+    try {
+      const response = await fetch(
+        `${API_URL}/admin/payments/${booking.id}/receipt`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/pdf, image/*',
+          },
+        },
+      );
+
+      if (response.status === 401 || response.status === 403) {
+        logout();
+        setLoginError('Your session expired. Please log in again.');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Could not open the payment receipt.');
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const receiptWindow = window.open(objectUrl, '_blank');
+
+      if (!receiptWindow) {
+        URL.revokeObjectURL(objectUrl);
+        throw new Error('Your browser blocked the receipt window. Allow pop-ups and try again.');
+      }
+
+      receiptWindow.addEventListener('beforeunload', () => {
+        URL.revokeObjectURL(objectUrl);
+      });
+    } catch (err) {
+      setPaymentsError(
+        err instanceof Error ? err.message : 'Unable to view receipt.',
+      );
+    } finally {
+      setReceiptLoadingId(null);
+    }
+  }
+
   useEffect(() => {
     if (token) {
       void loadDashboard();
@@ -454,6 +733,12 @@ export default function AdminPage() {
       void loadConversations();
     }
   }, [token, activeSection, loadConversations]);
+
+  useEffect(() => {
+    if (token && activeSection === 'payments') {
+      void loadPayments();
+    }
+  }, [token, activeSection, loadPayments]);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -498,6 +783,12 @@ export default function AdminPage() {
     event.preventDefault();
     setPage(1);
     void loadDashboard();
+  }
+
+  function handlePaymentSearch(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPaymentPage(1);
+    void loadPayments();
   }
 
   if (!token) {
@@ -592,6 +883,14 @@ export default function AdminPage() {
 
         <button
           type="button"
+          className={`admin-nav-link ${activeSection === 'payments' ? 'admin-nav-active' : ''}`}
+          onClick={() => setActiveSection('payments')}
+        >
+          <span>₱</span> Payment Verification
+        </button>
+
+        <button
+          type="button"
           className="admin-nav-link"
           onClick={() => {
             setActiveSection('dashboard');
@@ -644,7 +943,7 @@ export default function AdminPage() {
 
             <section className="admin-welcome">
               <div>
-                <p className="admin-welcome-label">SMARTSTAY AI MANAGEMENT</p>
+                <p className="admin-welcome-label">SMARTSTAY MANAGEMENT</p>
                 <h2>Welcome back{user?.name ? `, ${user.name}` : ''}!</h2>
                 <p>Here's what's happening with your hotel today.</p>
               </div>
@@ -840,7 +1139,7 @@ export default function AdminPage() {
               </div>
             </section>
           </>
-        ) : (
+        ) : activeSection === 'messages' ? (
           <>
             <header className="admin-topbar">
               <div>
@@ -1065,7 +1364,7 @@ export default function AdminPage() {
                                 }}
                               >
                                 <strong style={{ display: 'block', fontSize: '11px', marginBottom: '5px' }}>
-                                  {isAdmin ? 'You (Admin)' : isAI ? 'SmartStay AI' : 'Customer'}
+                                  {isAdmin ? 'You (Admin)' : isAI ? 'SmartStay' : 'Customer'}
                                 </strong>
                                 <p style={{ margin: 0, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                                   {message.message}
@@ -1143,10 +1442,391 @@ export default function AdminPage() {
               </div>
             </section>
           </>
+        ) : (
+          <>
+            <header className="admin-topbar">
+              <div>
+                <p className="admin-eyebrow">PAYMENT MANAGEMENT</p>
+                <h1>Payment Verification</h1>
+              </div>
+
+              <button
+                className="admin-refresh-button"
+                onClick={() => void loadPayments()}
+                disabled={paymentsLoading}
+              >
+                ↻ Refresh payments
+              </button>
+            </header>
+
+            <section className="admin-welcome">
+              <div>
+                <p className="admin-welcome-label">SMARTSTAY AI PAYMENTS</p>
+                <h2>Manage guest payments</h2>
+                <p>Review receipts, verify online payments, and record cash collections.</p>
+              </div>
+              <div className="admin-welcome-icon">₱</div>
+            </section>
+
+            {paymentsError && (
+              <div className="admin-alert admin-alert-error" role="alert">
+                {paymentsError}
+              </div>
+            )}
+
+            <section className="admin-bookings-panel" style={{ marginTop: '24px' }}>
+              <div className="admin-panel-heading">
+                <div>
+                  <h2>Payment Records</h2>
+                  <p>Only bookings with a recorded payment method are displayed.</p>
+                </div>
+                <span className="admin-booking-count">
+                  {payments?.total ?? 0} payments
+                </span>
+              </div>
+
+              <form
+                className="admin-filter-form"
+                onSubmit={handlePaymentSearch}
+              >
+                <input
+                  type="search"
+                  aria-label="Search payments"
+                  placeholder="Search guest, email, reference, or booking ID..."
+                  value={paymentSearch}
+                  onChange={(event) => {
+                    setPaymentSearch(event.target.value);
+                    setPaymentPage(1);
+                  }}
+                />
+
+                <select
+                  aria-label="Filter payment status"
+                  value={paymentStatus}
+                  onChange={(event) => {
+                    setPaymentStatus(event.target.value);
+                    setPaymentPage(1);
+                  }}
+                >
+                  <option value="">All payment statuses</option>
+                  <option value="pending">Pending verification</option>
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Unpaid</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="unrecorded">Unrecorded</option>
+                </select>
+
+                <button className="admin-primary-button" type="submit">
+                  Search
+                </button>
+              </form>
+
+              <div className="admin-table-wrapper">
+                <table className="admin-bookings-table">
+                  <thead>
+                    <tr>
+                      <th>Booking</th>
+                      <th>Guest</th>
+                      <th>Payment Method</th>
+                      <th>Reference</th>
+                      <th>Amount</th>
+                      <th>Payment Status</th>
+                      <th>Receipt</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {paymentsLoading && !payments ? (
+                      <tr>
+                        <td colSpan={8} className="admin-table-empty">
+                          Loading payment records...
+                        </td>
+                      </tr>
+                    ) : payments?.data.length ? (
+                      payments.data.map((booking) => (
+                        <tr key={booking.id}>
+                          <td>
+                            <strong>#{booking.id}</strong>
+                            <small>{formatDate(booking.check_in)}</small>
+                          </td>
+
+                          <td>
+                            <strong>{booking.guest_name || 'Guest'}</strong>
+                            <small>{booking.guest_email || '—'}</small>
+                          </td>
+
+                          <td>{paymentMethodLabel(booking.payment_method)}</td>
+
+                          <td>
+                            {booking.payment_reference || '—'}
+                          </td>
+
+                          <td>
+                            <strong>{formatCurrency(booking.total_price)}</strong>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`admin-status-badge ${booking.payment_status}`}
+                            >
+                              {booking.payment_status}
+                            </span>
+                            {booking.payment_rejection_reason && (
+                              <small style={{ display: 'block', maxWidth: '180px' }}>
+                                Reason: {booking.payment_rejection_reason}
+                              </small>
+                            )}
+                          </td>
+
+                          <td>
+                            {booking.payment_proof_path ? (
+                              <button
+                                type="button"
+                                disabled={receiptLoadingId === booking.id}
+                                onClick={() => void viewReceipt(booking)}
+                                style={{
+                                  border: '1px solid #ddd',
+                                  borderRadius: '7px',
+                                  padding: '7px 10px',
+                                  background: '#fff',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {receiptLoadingId === booking.id
+                                  ? 'Opening...'
+                                  : 'View Receipt'}
+                              </button>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+
+                          <td>
+                            {booking.payment_status === 'pending' &&
+                            (booking.payment_method === 'gcash' ||
+                              booking.payment_method === 'maya') ? (
+                              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                <button
+                                  type="button"
+                                  disabled={paymentActionId === booking.id}
+                                  onClick={() => void approvePayment(booking)}
+                                  style={{
+                                    border: 'none',
+                                    borderRadius: '7px',
+                                    padding: '7px 10px',
+                                    background: '#dcfce7',
+                                    color: '#166534',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  {paymentActionId === booking.id ? 'Please wait...' : 'Approve'}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={paymentActionId === booking.id}
+                                  onClick={() => {
+                                    setRejectingPayment(booking);
+                                    setRejectionReason('');
+                                  }}
+                                  style={{
+                                    border: 'none',
+                                    borderRadius: '7px',
+                                    padding: '7px 10px',
+                                    background: '#fee2e2',
+                                    color: '#991b1b',
+                                    cursor: 'pointer',
+                                  }}
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            ) : booking.payment_method === 'cash_at_hotel' &&
+                              booking.payment_status !== 'paid' ? (
+                              <button
+                                type="button"
+                                disabled={paymentActionId === booking.id}
+                                onClick={() => void collectCash(booking)}
+                                style={{
+                                  border: 'none',
+                                  borderRadius: '7px',
+                                  padding: '7px 10px',
+                                  background: '#dcfce7',
+                                  color: '#166534',
+                                  cursor: 'pointer',
+                                }}
+                              >
+                                {paymentActionId === booking.id
+                                  ? 'Please wait...'
+                                  : 'Mark Collected'}
+                              </button>
+                            ) : (
+                              <span style={{ color: '#9ca3af' }}>No action</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={8} className="admin-table-empty">
+                          No payment records found.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="admin-pagination">
+                <span>
+                  Page {payments?.current_page ?? 1} of {payments?.last_page ?? 1}
+                </span>
+
+                <div>
+                  <button
+                    type="button"
+                    disabled={!payments || paymentPage <= 1 || paymentsLoading}
+                    onClick={() =>
+                      setPaymentPage((current) => Math.max(1, current - 1))
+                    }
+                  >
+                    Previous
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={
+                      !payments ||
+                      paymentPage >= payments.last_page ||
+                      paymentsLoading
+                    }
+                    onClick={() =>
+                      setPaymentPage((current) =>
+                        Math.min(payments?.last_page ?? current, current + 1),
+                      )
+                    }
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            </section>
+
+            {rejectingPayment && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="reject-payment-title"
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 1000,
+                  background: 'rgba(15, 23, 42, 0.55)',
+                  display: 'grid',
+                  placeItems: 'center',
+                  padding: '20px',
+                }}
+              >
+                <form
+                  onSubmit={rejectPayment}
+                  style={{
+                    width: '100%',
+                    maxWidth: '440px',
+                    background: '#fff',
+                    borderRadius: '14px',
+                    padding: '24px',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.18)',
+                  }}
+                >
+                  <h2 id="reject-payment-title" style={{ marginTop: 0 }}>
+                    Reject Payment
+                  </h2>
+
+                  <p style={{ color: '#6b7280', fontSize: '14px' }}>
+                    Booking #{rejectingPayment.id} · {rejectingPayment.guest_name}
+                  </p>
+
+                  <label
+                    htmlFor="payment-rejection-reason"
+                    style={{ display: 'block', marginBottom: '8px', fontWeight: 600 }}
+                  >
+                    Reason for rejection
+                  </label>
+
+                  <textarea
+                    id="payment-rejection-reason"
+                    value={rejectionReason}
+                    onChange={(event) => setRejectionReason(event.target.value)}
+                    placeholder="Explain why this payment cannot be verified..."
+                    rows={4}
+                    maxLength={1000}
+                    required
+                    style={{
+                      boxSizing: 'border-box',
+                      width: '100%',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      font: 'inherit',
+                      resize: 'vertical',
+                    }}
+                  />
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'flex-end',
+                      gap: '10px',
+                      marginTop: '18px',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={paymentActionId === rejectingPayment.id}
+                      onClick={() => {
+                        setRejectingPayment(null);
+                        setRejectionReason('');
+                      }}
+                      style={{
+                        border: '1px solid #ddd',
+                        borderRadius: '8px',
+                        padding: '10px 14px',
+                        background: '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={
+                        paymentActionId === rejectingPayment.id ||
+                        !rejectionReason.trim()
+                      }
+                      style={{
+                        border: 'none',
+                        borderRadius: '8px',
+                        padding: '10px 14px',
+                        background: '#dc2626',
+                        color: '#fff',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {paymentActionId === rejectingPayment.id
+                        ? 'Rejecting...'
+                        : 'Confirm Rejection'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            )}
+          </>
         )}
 
         <footer className="admin-footer">
-          SmartStay AI · Hotel Management Dashboard
+          SmartStay · Hotel Management Dashboard
         </footer>
       </main>
     </div>

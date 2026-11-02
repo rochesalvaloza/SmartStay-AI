@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getCustomerToken } from "../../services/authService";
 import { API_URL } from "../../services/api";
 
 interface ChatMessage {
-  sender: "AI" | "You";
+  id?: number;
+  sender_type?: "customer" | "ai" | "admin";
+  sender: "AI" | "You" | "Admin";
   text: string;
+  created_at?: string;
 }
 
 interface ChatResponse {
@@ -16,12 +19,46 @@ interface ChatResponse {
   message?: string;
 }
 
+interface ConversationResponse {
+  success: boolean;
+  conversation: {
+    id: number;
+    messages: {
+      id: number;
+      sender_type: "customer" | "ai" | "admin";
+      message: string;
+      created_at: string;
+    }[];
+  } | null;
+}
+
 const suggestedQuestions = [
   "What rooms are available?",
   "How much does a room cost?",
   "How can I book a room?",
   "Which room is best for my family?",
 ];
+
+function formatMessages(
+  messages: ConversationResponse["conversation"] extends infer T
+    ? NonNullable<T> extends { messages: infer M }
+      ? M
+      : never
+    : never
+): ChatMessage[] {
+  return messages.map((message) => ({
+    id: message.id,
+    sender_type: message.sender_type,
+    sender:
+      message.sender_type === "customer"
+        ? "You"
+        : message.sender_type === "admin"
+          ? "Admin"
+          : "AI",
+    text: message.message,
+    created_at: message.created_at,
+  }));
+}
 
 export default function Chatbot() {
   const navigate = useNavigate();
@@ -34,9 +71,63 @@ export default function Chatbot() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
     {
       sender: "AI",
-      text: "Hello! 👋 Welcome to SmartStay AI. How can I help you find a room today?",
+      text: "Hello! 👋 Welcome to SmartStay. How can I help you find a room today?",
     },
   ]);
+
+  const loadConversation = useCallback(async () => {
+    const token = getCustomerToken();
+    if (!token) return;
+
+    try {
+      const response = await fetch(
+        `${API_URL}/customer/conversation`,
+        {
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) return;
+
+      const result: ConversationResponse = await response.json();
+
+      if (result.conversation) {
+        setConversationId(result.conversation.id);
+
+        const savedMessages = formatMessages(
+          result.conversation.messages
+        );
+
+        setChatMessages((current) => {
+          const welcomeMessage = current[0];
+
+          if (savedMessages.length === 0) return current;
+
+          return [
+            welcomeMessage,
+            ...savedMessages,
+          ];
+        });
+      }
+    } catch (error) {
+      console.error("Unable to load conversation:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!chatOpen || !getCustomerToken()) return;
+
+    void loadConversation();
+
+    const interval = window.setInterval(() => {
+      void loadConversation();
+    }, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [chatOpen, loadConversation]);
 
   async function sendMessage(question?: string) {
     const messageText = (question ?? chatInput).trim();
@@ -50,7 +141,7 @@ export default function Chatbot() {
         ...previous,
         {
           sender: "AI",
-          text: "Please log in to your customer account before using SmartStay AI.",
+          text: "Please log in to your customer account before using SmartStay.",
         },
       ]);
 
@@ -93,22 +184,24 @@ export default function Chatbot() {
           throw new Error("Customer access only. Please use a customer account.");
         }
 
-        throw new Error(
-          result.message || "The AI assistant is unavailable.",
-        );
+        throw new Error(result.message || "The AI assistant is unavailable.");
       }
 
       if (result.conversation_id) {
         setConversationId(result.conversation_id);
       }
 
-      setChatMessages((previous) => [
-        ...previous,
-        {
-          sender: "AI",
-          text: result.reply || "Sorry, I could not generate a response.",
-        },
-      ]);
+      await loadConversation();
+
+      if (result.reply) {
+        setChatMessages((previous) => [
+          ...previous,
+          {
+            sender: "AI",
+            text: result.reply!,
+          },
+        ]);
+      }
     } catch (error) {
       setChatMessages((previous) => [
         ...previous,
@@ -148,7 +241,7 @@ export default function Chatbot() {
           className="fixed bottom-24 right-4 z-50 flex h-[500px] w-[calc(100%-2rem)] max-w-sm flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:right-6"
         >
           <div className="bg-violet-700 p-4 text-white">
-            <h2 className="font-bold">SmartStay AI Assistant</h2>
+            <h2 className="font-bold">SmartStay Assistant</h2>
             <p className="mt-1 text-sm text-violet-100">
               Ask us about your stay!
             </p>
@@ -160,15 +253,19 @@ export default function Chatbot() {
           >
             {chatMessages.map((message, index) => (
               <div
-                key={`${index}-${message.sender}`}
+                key={message.id ?? `${index}-${message.sender}`}
                 className={`max-w-[90%] whitespace-pre-wrap rounded-xl p-3 text-sm leading-6 ${
                   message.sender === "You"
                     ? "ml-auto bg-violet-700 text-white"
-                    : "bg-white text-slate-700 shadow-sm"
+                    : message.sender === "Admin"
+                      ? "bg-emerald-50 text-slate-700 shadow-sm border border-emerald-200"
+                      : "bg-white text-slate-700 shadow-sm"
                 }`}
               >
                 <p className="mb-1 text-xs font-bold opacity-70">
-                  {message.sender}
+                  {message.sender === "Admin"
+                    ? "SmartStay Support"
+                    : message.sender}
                 </p>
                 {message.text}
               </div>

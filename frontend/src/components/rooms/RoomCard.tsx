@@ -5,25 +5,41 @@ interface RoomCardProps {
   onBook: (room: Room) => void;
 }
 
+const roomImages: Record<string, string> = {
+  deluxe:
+    "https://images.unsplash.com/photo-1611892440504-42a792e24d32?w=1000",
+  family:
+    "https://images.unsplash.com/photo-1566665797739-1674de7a421a?w=1000",
+  executive:
+    "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=1000",
+};
+
+function getRoomImage(roomName: string): string {
+  const type = roomName.toLowerCase();
+
+  if (type.includes("deluxe")) return roomImages.deluxe;
+  if (type.includes("family")) return roomImages.family;
+  if (type.includes("executive")) return roomImages.executive;
+
+  return roomImages.deluxe;
+}
+
 export default function RoomCard({ room, onBook }: RoomCardProps) {
+  const imageUrl = room.image || getRoomImage(room.name);
+
   return (
     <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-      {/* Room Image */}
       <div className="relative h-52 overflow-hidden bg-slate-100">
-        {room.image ? (
-          <img
-            src={room.image}
-            alt={room.name}
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-sm text-slate-400">
-            No room image available
-          </div>
-        )}
+        <img
+          src={imageUrl}
+          alt={`${room.name} room`}
+          loading="lazy"
+          onError={(event) => {
+            event.currentTarget.src = getRoomImage(room.name);
+          }}
+          className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+        />
 
-        {/* Availability Badge */}
         <span
           className={`absolute right-3 top-3 rounded-full px-3 py-1 text-xs font-semibold shadow-sm ${
             room.is_available
@@ -35,7 +51,6 @@ export default function RoomCard({ room, onBook }: RoomCardProps) {
         </span>
       </div>
 
-      {/* Room Details */}
       <div className="p-5">
         <h3 className="text-xl font-bold text-slate-800 transition-colors group-hover:text-violet-700">
           {room.name}
@@ -45,16 +60,14 @@ export default function RoomCard({ room, onBook }: RoomCardProps) {
           {room.description || "Enjoy a comfortable stay in this room."}
         </p>
 
-        {/* Capacity */}
         <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
-          <span aria-hidden="true">👥</span>
+          <span>👥</span>
           <span>
             Capacity: <strong>{room.capacity}</strong>{" "}
             {Number(room.capacity) === 1 ? "guest" : "guests"}
           </span>
         </div>
 
-        {/* Price and Booking */}
         <div className="mt-5 flex items-end justify-between gap-3 border-t border-slate-100 pt-4">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">

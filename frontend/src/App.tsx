@@ -42,7 +42,8 @@ function MainLayout() {
       </Routes>
 
       <Footer />
-      <Chatbot />
+
+      {window.location.pathname !== "/admin" && <Chatbot />}
     </div>
   );
 }

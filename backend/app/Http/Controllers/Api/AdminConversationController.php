@@ -34,21 +34,21 @@ class AdminConversationController extends Controller
 
     // View a conversation and mark customer messages as read
     public function show(Conversation $conversation)
-    {
-        $conversation->messages()
-            ->where('sender_type', 'customer')
-            ->whereNull('read_at')
-            ->update(['read_at' => now()]);
+{
+    $conversation->messages()
+        ->where('sender_type', 'customer')
+        ->whereNull('read_at')
+        ->update(['read_at' => now()]);
 
-        return response()->json([
-            'success' => true,
-            'conversation' => $conversation->load([
-                'messages' => function ($query) {
-                    $query->orderBy('created_at');
-                }
-            ]),
-        ]);
-    }
+    return response()->json([
+        'success' => true,
+        'conversation' => $conversation->load([
+            'messages' => function ($query) {
+                $query->orderBy('id', 'asc');
+            }
+        ]),
+    ]);
+}
 
     // Send an admin reply
     public function reply(Request $request, Conversation $conversation)

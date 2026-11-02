@@ -11,68 +11,37 @@ use Illuminate\Validation\ValidationException;
 
 class RoomController extends Controller
 {
-    /**
-     * Retrieve rooms and check availability for the requested stay.
-     */
     public function index(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'check_in' => [
-                'nullable',
-                'required_with:check_out',
-                'date_format:Y-m-d',
-            ],
-            'check_out' => [
-                'nullable',
-                'required_with:check_in',
-                'date_format:Y-m-d',
-                'after:check_in',
-            ],
-            'check_in_time' => [
-                'nullable',
-                'required_with:check_out_time',
-                'date_format:H:i',
-            ],
-            'check_out_time' => [
-                'nullable',
-                'required_with:check_in_time',
-                'date_format:H:i',
-            ],
-            'guests' => [
-                'sometimes',
-                'integer',
-                'min:1',
-                'max:20',
-            ],
+            'check_in' => ['nullable', 'required_with:check_out', 'date_format:Y-m-d'],
+            'check_out' => ['nullable', 'required_with:check_in', 'date_format:Y-m-d', 'after:check_in'],
+            'check_in_time' => ['nullable', 'required_with:check_out_time', 'date_format:H:i'],
+            'check_out_time' => ['nullable', 'required_with:check_in_time', 'date_format:H:i'],
+            'guests' => ['sometimes', 'integer', 'min:1', 'max:20'],
         ]);
 
         $checkIn = $validated['check_in'] ?? null;
         $checkOut = $validated['check_out'] ?? null;
         $checkInTime = $validated['check_in_time'] ?? null;
         $checkOutTime = $validated['check_out_time'] ?? null;
-        $guests = isset($validated['guests'])
-            ? (int) $validated['guests']
-            : null;
+        $guests = isset($validated['guests']) ? (int) $validated['guests'] : null;
 
         $hasTimes = $checkInTime !== null && $checkOutTime !== null;
 
-        if ($hasTimes && $checkIn !== null && $checkOut !== null) {
+        if ($hasTimes && $checkIn && $checkOut) {
             $requestedStart = strtotime("$checkIn $checkInTime");
             $requestedEnd = strtotime("$checkOut $checkOutTime");
 
             if ($requestedEnd <= $requestedStart) {
                 throw ValidationException::withMessages([
-                    'check_out_time' => [
-                        'Check-out must be later than check-in.',
-                    ],
+                    'check_out_time' => ['Check-out must be later than check-in.'],
                 ]);
             }
         }
 
-        /*
-         * Get rooms that are enabled and can accommodate
-         * the requested number of guests.
-         */
+        $now = now();
+
         $roomsQuery = Room::query()
             ->where('is_available', true);
 
@@ -81,59 +50,55 @@ class RoomController extends Controller
         }
 
         /*
-         * Exclude rooms with overlapping bookings.
-         * Cancelled bookings do not block availability.
+         * Exclude bookings that overlap the requested stay.
+         * Cancelled bookings and bookings whose checkout has passed
+         * do not block room availability.
          */
-        if ($checkIn !== null && $checkOut !== null) {
-            $roomsQuery->whereDoesntHave(
-                'bookings',
-                function (Builder $query) use (
-                    $checkIn,
-                    $checkOut,
-                    $checkInTime,
-                    $checkOutTime,
-                    $hasTimes
-                ) {
-                    $query->where(function (Builder $statusQuery) {
-                        $statusQuery
-                            ->whereNull('status')
-                            ->orWhere('status', '!=', 'cancelled');
-                    });
+        $roomsQuery->whereDoesntHave('bookings', function (Builder $query) use (
+            $checkIn,
+            $checkOut,
+            $checkInTime,
+            $checkOutTime,
+            $hasTimes,
+            $now
+        ) {
+            $query->where(function (Builder $statusQuery) {
+                $statusQuery
+                    ->whereNull('status')
+                    ->orWhereNotIn('status', ['cancelled', 'completed']);
+            });
 
-                    if ($hasTimes) {
-                        /*
-                         * Treat missing booking times conservatively:
-                         * missing check-in time = start of day;
-                         * missing check-out time = end of day.
-                         */
-                        $query
-                            ->whereRaw(
-                                "TIMESTAMP(
-                                    check_in,
-                                    COALESCE(check_in_time, '00:00:00')
-                                ) < ?",
-                                ["$checkOut $checkOutTime"]
-                            )
-                            ->whereRaw(
-                                "TIMESTAMP(
-                                    check_out,
-                                    COALESCE(check_out_time, '23:59:59')
-                                ) > ?",
-                                ["$checkIn $checkInTime"]
-                            );
-                    } else {
-                        /*
-                         * Standard overnight booking overlap:
-                         * existing check-in < requested check-out,
-                         * and existing check-out > requested check-in.
-                         */
-                        $query
-                            ->where('check_in', '<', $checkOut)
-                            ->where('check_out', '>', $checkIn);
-                    }
-                }
+            // Ignore reservations that have already ended.
+            $query->whereRaw(
+                "TIMESTAMP(check_out, COALESCE(check_out_time, '23:59:59')) > ?",
+                [$now->format('Y-m-d H:i:s')]
             );
-        }
+
+            if ($checkIn && $checkOut) {
+                if ($hasTimes) {
+                    $query
+                        ->whereRaw(
+                            "TIMESTAMP(check_in, COALESCE(check_in_time, '00:00:00')) < ?",
+                            ["$checkOut $checkOutTime"]
+                        )
+                        ->whereRaw(
+                            "TIMESTAMP(check_out, COALESCE(check_out_time, '23:59:59')) > ?",
+                            ["$checkIn $checkInTime"]
+                        );
+                } else {
+                    $query
+                        ->where('check_in', '<', $checkOut)
+                        ->where('check_out', '>', $checkIn);
+                }
+            } else {
+                // Without requested dates, only show rooms with no
+                // currently active or future reservation.
+                $query->whereRaw(
+                    "TIMESTAMP(check_in, COALESCE(check_in_time, '00:00:00')) <= ?",
+                    [$now->format('Y-m-d H:i:s')]
+                );
+            }
+        });
 
         $rooms = $roomsQuery
             ->orderBy('room_type')
@@ -141,9 +106,6 @@ class RoomController extends Controller
             ->orderBy('id')
             ->get();
 
-        /*
-         * Group the available physical rooms by room type.
-         */
         $availability = $rooms
             ->groupBy('room_type')
             ->map(function ($typeRooms) {
@@ -171,9 +133,6 @@ class RoomController extends Controller
         ]);
     }
 
-    /**
-     * Retrieve one enabled room.
-     */
     public function show(Room $room): JsonResponse
     {
         if (!$room->is_available) {

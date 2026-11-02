@@ -14,6 +14,8 @@ interface BookingResponse {
     id?: number;
     total_price?: number | string;
     status?: string;
+    payment_status?: string;
+    payment_method?: string;
   };
   errors?: Record<string, string[]>;
 }
@@ -27,6 +29,8 @@ interface BookingModalProps {
   onSuccess: () => void;
 }
 
+type PaymentMethod = "gcash" | "maya" | "cash_at_hotel";
+
 function getToday(): string {
   const date = new Date();
   const year = date.getFullYear();
@@ -39,8 +43,7 @@ function getToday(): string {
 const inputClass =
   "w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-800 outline-none transition placeholder:text-slate-400 focus:border-violet-500 focus:ring-4 focus:ring-violet-100";
 
-const labelClass =
-  "mb-2 block text-sm font-semibold text-slate-700";
+const labelClass = "mb-2 block text-sm font-semibold text-slate-700";
 
 export default function BookingModal({
   room,
@@ -70,14 +73,43 @@ export default function BookingModal({
       : "2",
   );
 
+  const [paymentMethod, setPaymentMethod] =
+    useState<PaymentMethod>("gcash");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentProof, setPaymentProof] = useState<File | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
+  function handlePaymentProof(file: File | null) {
+    setPaymentProof(null);
+
+    if (!file) return;
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "application/pdf",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      setError("Please upload a JPG, PNG, or PDF receipt.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Receipt must not exceed 5 MB.");
+      return;
+    }
+
+    setError("");
+    setPaymentProof(file);
+  }
+
   async function submitBooking(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    // Require customer authentication.
     if (!customer || !token) {
       onClose();
       navigate("/login");
@@ -104,26 +136,48 @@ export default function BookingModal({
       return;
     }
 
+    if (paymentMethod !== "cash_at_hotel") {
+      if (!paymentReference.trim()) {
+        setError("Please enter your payment transaction reference.");
+        return;
+      }
+
+      if (!paymentProof) {
+        setError("Please upload your payment receipt.");
+        return;
+      }
+    }
+
     setLoading(true);
     setError("");
     setMessage("");
 
     try {
+      const formData = new FormData();
+
+      formData.append("room_id", String(room.id));
+      formData.append("check_in", checkIn);
+      formData.append("check_in_time", checkInTime);
+      formData.append("check_out", checkOut);
+      formData.append("check_out_time", checkOutTime);
+      formData.append("guests", String(Number(guests)));
+      formData.append("payment_method", paymentMethod);
+
+      if (paymentMethod !== "cash_at_hotel") {
+        formData.append("payment_reference", paymentReference.trim());
+
+        if (paymentProof) {
+          formData.append("payment_proof", paymentProof);
+        }
+      }
+
       const response = await fetch(`${API_URL}/bookings`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Accept: "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          room_id: room.id,
-          check_in: checkIn,
-          check_in_time: checkInTime,
-          check_out: checkOut,
-          check_out_time: checkOutTime,
-          guests: Number(guests),
-        }),
+        body: formData,
       });
 
       const result: BookingResponse = await response.json();
@@ -146,6 +200,13 @@ export default function BookingModal({
 
       const booking = result.data;
 
+      const paymentLabel =
+        paymentMethod === "gcash"
+          ? "GCash"
+          : paymentMethod === "maya"
+            ? "Maya"
+            : "Cash at Hotel";
+
       setMessage(
         [
           result.message || "Your booking was submitted successfully!",
@@ -155,7 +216,13 @@ export default function BookingModal({
           booking.total_price !== undefined
             ? `Total price: ₱${Number(booking.total_price).toLocaleString("en-PH")}`
             : "",
-          booking.status ? `Status: ${booking.status}` : "",
+          `Payment method: ${paymentLabel}`,
+          `Payment status: ${
+            booking.payment_status === "pending"
+              ? "Pending admin verification"
+              : "Unpaid"
+          }`,
+          booking.status ? `Booking status: ${booking.status}` : "",
           `Guest name: ${guestName}`,
           `Guest email: ${guestEmail}`,
         ]
@@ -392,6 +459,129 @@ export default function BookingModal({
                 </div>
               </div>
 
+              {/* Payment Information */}
+              <div>
+                <h3 className="mb-4 text-lg font-bold text-slate-900">
+                  Payment Information
+                </h3>
+
+                <div className="space-y-3">
+                  <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-4 transition hover:border-violet-400">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="gcash"
+                      checked={paymentMethod === "gcash"}
+                      onChange={() => {
+                        setPaymentMethod("gcash");
+                        setPaymentReference("");
+                        setPaymentProof(null);
+                      }}
+                      className="h-4 w-4 accent-violet-700"
+                    />
+                    <span className="font-semibold text-slate-800">GCash</span>
+                  </label>
+
+                  <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-4 transition hover:border-violet-400">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="maya"
+                      checked={paymentMethod === "maya"}
+                      onChange={() => {
+                        setPaymentMethod("maya");
+                        setPaymentReference("");
+                        setPaymentProof(null);
+                      }}
+                      className="h-4 w-4 accent-violet-700"
+                    />
+                    <span className="font-semibold text-slate-800">Maya</span>
+                  </label>
+
+                  <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 p-4 transition hover:border-violet-400">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="cash_at_hotel"
+                      checked={paymentMethod === "cash_at_hotel"}
+                      onChange={() => {
+                        setPaymentMethod("cash_at_hotel");
+                        setPaymentReference("");
+                        setPaymentProof(null);
+                      }}
+                      className="h-4 w-4 accent-violet-700"
+                    />
+                    <span className="font-semibold text-slate-800">
+                      Cash at Hotel
+                    </span>
+                  </label>
+                </div>
+
+                {paymentMethod !== "cash_at_hotel" ? (
+                  <div className="mt-4 space-y-4 rounded-2xl border border-violet-100 bg-violet-50 p-4">
+                    <p className="text-sm leading-6 text-violet-900">
+                      Complete your payment using {paymentMethod === "gcash" ? "GCash" : "Maya"}.
+                      Enter your transaction reference and upload your receipt.
+                      Your payment will remain pending until an admin verifies it.
+                    </p>
+
+                    <div>
+                      <label
+                        htmlFor="paymentReference"
+                        className={labelClass}
+                      >
+                        Transaction Reference Number
+                      </label>
+
+                      <input
+                        id="paymentReference"
+                        type="text"
+                        value={paymentReference}
+                        onChange={(event) =>
+                          setPaymentReference(event.target.value)
+                        }
+                        required
+                        maxLength={100}
+                        placeholder="Enter your transaction reference"
+                        className={inputClass}
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="paymentProof" className={labelClass}>
+                        Upload Payment Receipt
+                      </label>
+
+                      <input
+                        id="paymentProof"
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf"
+                        required
+                        onChange={(event) =>
+                          handlePaymentProof(event.target.files?.[0] ?? null)
+                        }
+                        className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-100 file:px-3 file:py-2 file:font-semibold file:text-violet-700"
+                      />
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        JPG, PNG, or PDF. Maximum file size: 5 MB.
+                      </p>
+
+                      {paymentProof && (
+                        <p className="mt-2 text-sm font-medium text-green-700">
+                          Selected: {paymentProof.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                    You will pay at the hotel. Your payment status will remain
+                    unpaid until the hotel admin confirms collection.
+                  </div>
+                )}
+              </div>
+
               {error && (
                 <p
                   role="alert"
@@ -411,8 +601,8 @@ export default function BookingModal({
 
               <p className="text-center text-xs leading-5 text-slate-500">
                 Your reservation will be validated by the server before it is
-                saved. Check-in and check-out times are subject to the
-                property's policies.
+                saved. Online payments require admin verification. Check-in and
+                check-out times are subject to the property's policies.
               </p>
             </form>
           )}

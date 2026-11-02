@@ -42,7 +42,7 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 w-full min-h-[72px] shrink-0 border-b border-slate-200 bg-white shadow-sm">
       <nav className="mx-auto flex min-h-[72px] w-full max-w-7xl items-center justify-between px-6">
         <NavLink to="/" className="text-2xl font-bold text-violet-700">
-          SmartStay AI
+          SmartStay
         </NavLink>
 
         <div className="flex items-center gap-6 text-sm font-medium">
