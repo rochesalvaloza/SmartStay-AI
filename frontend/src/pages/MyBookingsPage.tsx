@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from "react";
 
-const API_URL = "http://127.0.0.1:8000/api";
+import { API_URL } from "../services/api";
 
 interface Booking {
   id: number;
