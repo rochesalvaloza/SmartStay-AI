@@ -21,9 +21,9 @@ RUN sed -ri -e 's!/var/www/html!/var/www/html/public!g' \
     && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
-ENV PORT=8000
+ENV PORT=10000
 RUN sed -i 's/Listen 80/Listen ${PORT}/' /etc/apache2/ports.conf \
     && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/' /etc/apache2/sites-available/000-default.conf
 
-EXPOSE 8000
+EXPOSE 10000
 CMD ["apache2-foreground"]
