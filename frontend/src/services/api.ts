@@ -1,10 +1,12 @@
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
-
-// Local Laravel development URL is used only by Vite's development server.
-// Production must set VITE_API_URL in the hosting dashboard (Vercel).
-export const API_URL = (
+const apiUrl =
   configuredApiUrl ||
-  (import.meta.env.DEV
-    ? "http://127.0.0.1:8000/api"
-    : "https://YOUR-KOYEB-SERVICE.koyeb.app/api")
-).replace(/\/+$/, "");
+  (import.meta.env.DEV ? "http://127.0.0.1:8000/api" : "");
+
+if (!apiUrl) {
+  throw new Error(
+    "Missing VITE_API_URL. Set it in the frontend hosting environment to your deployed Laravel API URL, ending in /api."
+  );
+}
+
+export const API_URL = apiUrl.replace(/\\/+$/, "");
