@@ -1,4 +1,4 @@
-# SmartStay-AI Laravel API runtime for Koyeb (PHP 8.2 + Apache)
+# SmartStay-AI Laravel API runtime for Render (PHP 8.2 + Apache)
 FROM php:8.2-apache
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,16 +14,17 @@ COPY backend/ /var/www/html/
 
 RUN sed -ri -e 's!/var/www/html!/var/www/html/public!g' \
     /etc/apache2/sites-available/000-default.conf \
-    && printf '<Directory /var/www/html/public>\n    AllowOverride All\n    Require all granted\n</Directory>\n' \
+    && printf '<Directory /var/www/html/public>\\n    AllowOverride All\\n    Require all granted\\n</Directory>\\n' \
        > /etc/apache2/conf-available/smartstay-public.conf \
     && a2enconf smartstay-public \
     && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader \
     && mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
+# Render expects the web process to listen on the configured PORT (default 10000).
 ENV PORT=10000
-RUN sed -i 's/Listen 80/Listen ${PORT}/' /etc/apache2/ports.conf \
-    && sed -i 's/<VirtualHost \*:80>/<VirtualHost *:${PORT}>/' /etc/apache2/sites-available/000-default.conf
+RUN sed -i "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf \
+    && sed -i "s/<VirtualHost \\*:80>/<VirtualHost *:${PORT}>/" /etc/apache2/sites-available/000-default.conf
 
 EXPOSE 10000
 CMD ["apache2-foreground"]
