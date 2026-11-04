@@ -1163,10 +1163,10 @@ export default function AdminPage() {
             )}
 
             <section
-              style={{
-                display: 'grid',
-                gridTemplateColumns: 'minmax(250px, 0.85fr) minmax(300px, 1.5fr)',
-                gap: '20px',
+  		className="admin-messages-layout"
+  		style={{
+    		display: 'grid',
+    		gap: '20px',
                 minHeight: '550px',
                 marginTop: '24px',
               }}
@@ -1386,10 +1386,8 @@ export default function AdminPage() {
                       )}
                     </div>
 
-                    <form
-                      onSubmit={handleReply}
-                      style={{
-                        display: 'flex',
+                    <form className="admin-reply-form" onSubmit={handleReply} style={{
+    			display: 'flex',
                         gap: '10px',
                         padding: '16px',
                         borderTop: '1px solid #e5e7eb',

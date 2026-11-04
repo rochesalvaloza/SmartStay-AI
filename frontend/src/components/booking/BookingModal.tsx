@@ -250,7 +250,7 @@ export default function BookingModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/60 p-2 backdrop-blur-sm sm:p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) handleClose();
       }}
@@ -259,7 +259,7 @@ export default function BookingModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="booking-title"
-        className="my-auto w-full max-w-2xl overflow-hidden rounded-3xl bg-white shadow-2xl"
+        className="my-auto flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl min-w-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl"
       >
         <div className="bg-gradient-to-r from-violet-700 to-indigo-600 px-6 py-7 text-white md:px-8">
           <div className="flex items-start justify-between gap-4">
@@ -303,7 +303,7 @@ export default function BookingModal({
           </div>
         </div>
 
-        <div className="max-h-[65vh] overflow-y-auto px-6 py-6 md:px-8">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6 sm:py-6 md:px-8">
           {message ? (
             <div className="rounded-2xl border border-green-200 bg-green-50 p-5 text-green-800">
               <h3 className="text-lg font-bold">Booking submitted!</h3>

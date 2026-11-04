@@ -45,9 +45,9 @@ const services = [
 
 export default function AboutPage() {
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-800">
+	<main className="min-h-screen w-full overflow-x-hidden bg-slate-50 text-slate-800">
       {/* Hero */}
-      <section className="relative flex min-h-[360px] items-center overflow-hidden bg-violet-950">
+      <section className="relative flex min-h-[320px] items-center overflow-hidden bg-violet-950 sm:min-h-[360px]">
         <img
           src="https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1800"
           alt="Beautiful hotel"
@@ -70,7 +70,7 @@ export default function AboutPage() {
       </section>
 
       {/* Introduction */}
-      <section className="mx-auto grid max-w-7xl items-center gap-12 px-5 py-16 md:grid-cols-2 md:py-24">
+      <section className="mx-auto grid w-full max-w-7xl min-w-0 items-center gap-8 px-4 py-12 sm:gap-12 sm:px-5 sm:py-16 md:grid-cols-2 md:py-24">
         <div>
           <p className="text-sm font-bold uppercase tracking-widest text-violet-600">
             Who We Are
@@ -149,7 +149,7 @@ export default function AboutPage() {
           </p>
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
           {values.map((value) => (
             <div
               key={value.title}
@@ -177,7 +177,7 @@ export default function AboutPage() {
             </h2>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-3">
+          <div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 md:grid-cols-3">
             {services.map((service) => (
               <div
                 key={service.title}

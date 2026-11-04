@@ -9,4 +9,5 @@ if (!apiUrl) {
   );
 }
 
-export const API_URL = apiUrl.replace(/\\/+$/, "");
+export const API_URL = apiUrl.replace(/\/+$/, "");
+

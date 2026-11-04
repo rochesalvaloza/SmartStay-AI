@@ -4,7 +4,6 @@ import { loginUser } from "../services/authService";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,10 +34,10 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-[80vh] flex items-center justify-center bg-slate-50 px-4 py-10">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-lg">
+    <main className="flex min-h-[80vh] items-center justify-center bg-slate-50 px-3 py-8 sm:px-4 sm:py-10">
+      <div className="w-full min-w-0 max-w-md rounded-2xl bg-white p-5 shadow-lg sm:p-8">
         <div className="mb-6 text-center">
-          <h1 className="text-3xl font-bold text-slate-800">
+          <h1 className="text-2xl font-bold text-slate-800 sm:text-3xl">
             Welcome Back
           </h1>
           <p className="mt-2 text-sm text-slate-500">
@@ -47,13 +46,13 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+          <div className="mb-4 break-words rounded-lg bg-red-50 p-3 text-sm text-red-600">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
+          <div className="min-w-0">
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Email Address
             </label>
@@ -63,12 +62,12 @@ export default function LoginPage() {
               onChange={(event) => setEmail(event.target.value)}
               required
               autoComplete="email"
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
+              className="w-full min-w-0 rounded-lg border border-slate-300 px-4 py-3 text-base outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
               placeholder="Enter your email"
             />
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Password
             </label>
@@ -78,7 +77,7 @@ export default function LoginPage() {
               onChange={(event) => setPassword(event.target.value)}
               required
               autoComplete="current-password"
-              className="w-full rounded-lg border border-slate-300 px-4 py-3 outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
+              className="w-full min-w-0 rounded-lg border border-slate-300 px-4 py-3 text-base outline-none focus:border-violet-600 focus:ring-2 focus:ring-violet-100"
               placeholder="Enter your password"
             />
           </div>

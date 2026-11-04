@@ -30,7 +30,7 @@ export default function RoomSearch({
 
   return (
     <form onSubmit={handleSubmit}>
-      <div className="grid gap-5 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-4">
         <div>
           <label
             htmlFor="checkin"
@@ -79,7 +79,7 @@ export default function RoomSearch({
             id="guests"
             value={searchGuests}
             onChange={(event) => setSearchGuests(event.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-3 outline-none focus:border-violet-600"
+            className="box-border w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-3 text-base outline-none focus:border-violet-600"
           >
             {[1, 2, 3, 4].map((guest) => (
               <option key={guest} value={guest}>
@@ -92,7 +92,7 @@ export default function RoomSearch({
         <div className="flex items-end">
           <button
             type="submit"
-            className="w-full rounded-lg bg-violet-700 px-5 py-3 font-semibold text-white transition hover:bg-violet-800"
+            className="min-h-12 w-full rounded-lg bg-violet-700 px-5 py-3 font-semibold text-white transition hover:bg-violet-800"
           >
             Search Rooms
           </button>

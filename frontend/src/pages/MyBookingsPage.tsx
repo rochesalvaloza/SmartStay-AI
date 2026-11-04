@@ -109,20 +109,25 @@ export default function MyBookingsPage() {
   }
 
   return (
-    <main className="mx-auto min-h-[70vh] max-w-4xl px-6 py-12">
+    <main className="mx-auto min-h-[70vh] w-full max-w-4xl px-3 py-8 sm:px-6 sm:py-12">
       <div className="mb-8 text-center">
-        <h1 className="text-3xl font-bold text-violet-700">My Bookings</h1>
-        <p className="mt-2 text-slate-600">
+        <h1 className="text-2xl font-bold text-violet-700 sm:text-3xl">
+          My Bookings
+        </h1>
+        <p className="mx-auto mt-2 max-w-xl text-sm text-slate-600 sm:text-base">
           Find your booking using your booking reference and email address.
         </p>
       </div>
 
       <form
         onSubmit={findBooking}
-        className="mx-auto max-w-xl space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+        className="mx-auto w-full max-w-xl space-y-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6"
       >
-        <div>
-          <label htmlFor="bookingId" className="mb-1 block font-medium">
+        <div className="min-w-0">
+          <label
+            htmlFor="bookingId"
+            className="mb-1 block text-sm font-medium sm:text-base"
+          >
             Booking Reference
           </label>
           <input
@@ -132,13 +137,16 @@ export default function MyBookingsPage() {
             required
             value={bookingId}
             onChange={(event) => setBookingId(event.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-3 focus:border-violet-600 focus:outline-none"
+            className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-3 text-base focus:border-violet-600 focus:outline-none"
             placeholder="Enter your booking ID"
           />
         </div>
 
-        <div>
-          <label htmlFor="bookingEmail" className="mb-1 block font-medium">
+        <div className="min-w-0">
+          <label
+            htmlFor="bookingEmail"
+            className="mb-1 block text-sm font-medium sm:text-base"
+          >
             Email Address
           </label>
           <input
@@ -147,7 +155,7 @@ export default function MyBookingsPage() {
             required
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-lg border border-slate-300 px-3 py-3 focus:border-violet-600 focus:outline-none"
+            className="w-full min-w-0 rounded-lg border border-slate-300 px-3 py-3 text-base focus:border-violet-600 focus:outline-none"
             placeholder="Email used for booking"
           />
         </div>
@@ -155,7 +163,7 @@ export default function MyBookingsPage() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full rounded-lg bg-violet-700 px-5 py-3 font-semibold text-white hover:bg-violet-800 disabled:opacity-60"
+          className="w-full rounded-lg bg-violet-700 px-5 py-3 font-semibold text-white transition hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {loading ? "Searching..." : "Find Booking"}
         </button>
@@ -164,23 +172,25 @@ export default function MyBookingsPage() {
       {error && (
         <p
           role="alert"
-          className="mx-auto mt-5 max-w-xl rounded-lg bg-red-50 p-4 text-red-700"
+          className="mx-auto mt-5 w-full max-w-xl break-words rounded-lg bg-red-50 p-3 text-sm text-red-700 sm:p-4 sm:text-base"
         >
           {error}
         </p>
       )}
 
       {message && (
-        <p className="mx-auto mt-5 max-w-xl rounded-lg bg-green-50 p-4 text-green-700">
+        <p className="mx-auto mt-5 w-full max-w-xl break-words rounded-lg bg-green-50 p-3 text-sm text-green-700 sm:p-4 sm:text-base">
           {message}
         </p>
       )}
 
       {booking && (
-        <section className="mx-auto mt-8 max-w-xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-xl font-bold">Booking #{booking.id}</h2>
+        <section className="mx-auto mt-8 w-full max-w-xl min-w-0 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
+          <h2 className="break-words text-lg font-bold sm:text-xl">
+            Booking #{booking.id}
+          </h2>
 
-          <div className="mt-4 space-y-3 text-sm text-slate-600">
+          <div className="mt-4 space-y-3 break-words text-sm text-slate-600 sm:text-base">
             <p><strong>Guest:</strong> {booking.guest_name}</p>
             <p><strong>Room:</strong> {booking.room_number ?? "Assigned room"}</p>
             <p><strong>Check-in:</strong> {booking.check_in}</p>
@@ -203,7 +213,7 @@ export default function MyBookingsPage() {
               type="button"
               onClick={cancelBooking}
               disabled={loading}
-              className="mt-6 w-full rounded-lg bg-red-600 px-5 py-3 font-semibold text-white hover:bg-red-700 disabled:opacity-60"
+              className="mt-6 w-full rounded-lg bg-red-600 px-5 py-3 font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {loading ? "Processing..." : "Cancel Booking"}
             </button>

@@ -28,8 +28,8 @@ export default function RoomCard({ room, onBook }: RoomCardProps) {
   const imageUrl = room.image || getRoomImage(room.name);
 
   return (
-    <article className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
-      <div className="relative h-52 overflow-hidden bg-slate-100">
+    <article className="group min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl">
+      <div className="relative h-48 overflow-hidden bg-slate-100 sm:h-52">
         <img
           src={imageUrl}
           alt={`${room.name} room`}
@@ -51,8 +51,8 @@ export default function RoomCard({ room, onBook }: RoomCardProps) {
         </span>
       </div>
 
-      <div className="p-5">
-        <h3 className="text-xl font-bold text-slate-800 transition-colors group-hover:text-violet-700">
+      <div className="p-4 sm:p-5">
+        <h3 className="break-words text-lg font-bold text-slate-800 transition-colors group-hover:text-violet-700 sm:text-xl">
           {room.name}
         </h3>
 
@@ -60,7 +60,7 @@ export default function RoomCard({ room, onBook }: RoomCardProps) {
           {room.description || "Enjoy a comfortable stay in this room."}
         </p>
 
-        <div className="mt-4 flex items-center gap-2 text-sm text-slate-600">
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-slate-600">
           <span>👥</span>
           <span>
             Capacity: <strong>{room.capacity}</strong>{" "}
@@ -68,12 +68,13 @@ export default function RoomCard({ room, onBook }: RoomCardProps) {
           </span>
         </div>
 
-        <div className="mt-5 flex items-end justify-between gap-3 border-t border-slate-100 pt-4">
-          <div>
+        <div className="mt-5 flex flex-col items-stretch gap-4 border-t border-slate-100 pt-4 sm:flex-row sm:items-end sm:justify-between">
+          <div className="min-w-0">
             <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
               Price per night
             </p>
-            <p className="mt-1 text-2xl font-extrabold text-violet-700">
+
+            <p className="mt-1 break-words text-xl font-extrabold text-violet-700 sm:text-2xl">
               ₱{Number(room.price_per_night ?? 0).toLocaleString("en-PH")}
             </p>
           </div>
@@ -82,7 +83,7 @@ export default function RoomCard({ room, onBook }: RoomCardProps) {
             type="button"
             onClick={() => onBook(room)}
             disabled={!room.is_available}
-            className="rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none"
+            className="w-full rounded-xl bg-violet-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none sm:w-auto"
           >
             {room.is_available ? "Book Now" : "Unavailable"}
           </button>
