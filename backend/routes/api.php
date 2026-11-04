@@ -21,6 +21,11 @@ Route::middleware('auth:sanctum')->post(
 Route::get('/rooms', [RoomController::class, 'index']);
 Route::get('/rooms/{room}', [RoomController::class, 'show']);
 
+// Public guest booking lookup (rate limited)
+Route::get('/bookings/{id}', [BookingController::class, 'show'])
+    ->whereNumber('id')
+    ->middleware('throttle:10,1');
+
 // Customer authentication
 Route::post('/register', [CustomerAuthController::class, 'register'])
     ->middleware('throttle:5,1');
@@ -50,7 +55,6 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Bookings
     Route::post('/bookings', [BookingController::class, 'store']);
-    Route::get('/bookings/{id}', [BookingController::class, 'show']);
     Route::post('/bookings/{booking}/cancel', [BookingController::class, 'cancel']);
 });
 

@@ -253,29 +253,49 @@ class BookingController extends Controller
     /**
      * Show only a booking owned by the authenticated customer.
      */
-    public function show(Request $request, $id): JsonResponse
-    {
-        if ($response = $this->ensureCustomer($request)) {
-            return $response;
-        }
+    /**
+ * Find a booking using its ID and the guest's email address.
+ */
+public function show(Request $request, $id): JsonResponse
+{
+    // Validate the guest email.
+    $validated = $request->validate([
+        'guest_email' => ['required', 'email', 'max:255'],
+    ]);
 
-        $booking = Booking::with('room')
-            ->where('user_id', $request->user()->id)
-            ->find($id);
+    $email = strtolower(trim($validated['guest_email']));
 
-        if (!$booking) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Booking not found.',
-            ], 404);
-        }
+    // Find the booking using both booking ID and email.
+    $booking = Booking::query()
+        ->select([
+            'id',
+            'guest_name',
+            'guest_email',
+            'room_number',
+            'check_in',
+            'check_out',
+            'guests',
+            'total_price',
+            'status',
+        ])
+        ->where('id', $id)
+        ->whereRaw('LOWER(guest_email) = ?', [$email])
+        ->first();
 
+    // Return an error if no matching booking exists.
+    if (!$booking) {
         return response()->json([
-            'success' => true,
-            'data' => $booking,
-        ]);
+            'success' => false,
+            'message' => 'Booking not found. Please check your booking reference and email address.',
+        ], 404);
     }
 
+    // Return the matching booking.
+    return response()->json([
+        'success' => true,
+        'data' => $booking,
+    ]);
+}
     /**
      * Cancel only a booking owned by the authenticated customer.
      */
